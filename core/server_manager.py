@@ -28,8 +28,10 @@ class ServerManager:
         self.process: Optional[subprocess.Popen] = None
         self.host = DEFAULT_HOST
         self.port = DEFAULT_PORT
+        self.gpu_device: Optional[str] = None
         self._log_thread: Optional[threading.Thread] = None
         self._log_callback: Optional[Callable] = None
+        self._log_prefix: str = ""
 
     @property
     def main_py(self) -> Path:
@@ -56,7 +58,9 @@ class ServerManager:
         extra_args: Optional[list] = None,
         progress_callback: Optional[Callable] = None,
         log_callback: Optional[Callable] = None,
-        python_exe: Optional[Path] = None
+        python_exe: Optional[Path] = None,
+        gpu_device: Optional[str] = None,
+        log_prefix: str = ""
     ) -> bool:
         """
         Start the ComfyUI server.
@@ -82,7 +86,9 @@ class ServerManager:
 
         self.host = host
         self.port = port
+        self.gpu_device = gpu_device
         self._log_callback = log_callback
+        self._log_prefix = log_prefix
 
         # Determine Python executable
         if python_exe is None:
@@ -118,8 +124,14 @@ class ServerManager:
 
             # Set up environment
             env = os.environ.copy()
-            # Remove any CUDA device restrictions
-            env.pop("CUDA_VISIBLE_DEVICES", None)
+            # Pin to a specific GPU, hide all GPUs for CPU mode, or clear restrictions
+            if gpu_device is not None:
+                if gpu_device == "cpu":
+                    env["CUDA_VISIBLE_DEVICES"] = ""
+                else:
+                    env["CUDA_VISIBLE_DEVICES"] = gpu_device
+            else:
+                env.pop("CUDA_VISIBLE_DEVICES", None)
 
             # Ensure portable Git and FFmpeg are on PATH for custom nodes
             from config import GIT_PORTABLE_DIR, FFMPEG_PORTABLE_DIR
@@ -166,15 +178,20 @@ class ServerManager:
             if progress_callback:
                 progress_callback(50, 100, "Waiting for server to start...")
 
-            if self._wait_for_server(timeout=60):
+            if self._wait_for_server(timeout=120):
                 if progress_callback:
                     progress_callback(100, 100, f"Server running at {self.server_url}")
                 return True
             else:
-                if progress_callback:
-                    progress_callback(0, 100, "Server failed to start")
-                self.stop_server()
-                return False
+                # Process may still be starting up — don't kill it if it's alive
+                if self.is_running:
+                    if progress_callback:
+                        progress_callback(50, 100, f"Server still starting (process alive, not responding yet)")
+                    return True  # Treat as success — process is running, just slow
+                else:
+                    if progress_callback:
+                        progress_callback(0, 100, "Server process died during startup")
+                    return False
 
         except Exception as e:
             if progress_callback:
@@ -186,7 +203,10 @@ class ServerManager:
         if self.process and self.process.stdout:
             for line in self.process.stdout:
                 if self._log_callback:
-                    self._log_callback(line.rstrip())
+                    text = line.rstrip()
+                    if self._log_prefix:
+                        text = f"{self._log_prefix} {text}"
+                    self._log_callback(text)
 
     def _wait_for_server(self, timeout: int = 60) -> bool:
         """Wait for server to be ready."""
@@ -222,27 +242,35 @@ class ServerManager:
             if progress_callback:
                 progress_callback(0, 100, "Stopping server...")
 
-            # Try graceful termination first
-            self.process.terminate()
+            pid = self.process.pid
 
-            try:
-                self.process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                # Force kill
-                self.process.kill()
-                self.process.wait(timeout=5)
-
-            # On Windows, also kill child processes
+            # On Windows, kill the entire process tree FIRST to avoid orphaned children
+            # (torch CUDA workers, etc.). taskkill /T kills the tree; /F forces it.
             if os.name == "nt":
                 try:
                     subprocess.run(
-                        ["taskkill", "/F", "/T", "/PID", str(self.process.pid)],
-                        capture_output=True
+                        ["taskkill", "/F", "/T", "/PID", str(pid)],
+                        capture_output=True,
+                        timeout=15,
                     )
                 except Exception:
                     pass
 
+            # If process is still alive (non-Windows, or taskkill missed it), terminate
+            if self.process.poll() is None:
+                self.process.terminate()
+                try:
+                    self.process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                    self.process.wait(timeout=5)
+            else:
+                # Reap the zombie so the handle is released
+                self.process.wait(timeout=5)
+
             self.process = None
+            self.gpu_device = None
+            self._log_prefix = ""
 
             if progress_callback:
                 progress_callback(100, 100, "Server stopped")
@@ -258,12 +286,25 @@ class ServerManager:
         progress_callback: Optional[Callable] = None,
         **start_kwargs
     ) -> bool:
-        """Restart the server."""
+        """Restart the server, preserving current settings unless overridden."""
         if progress_callback:
             progress_callback(0, 100, "Restarting server...")
 
+        # Preserve current settings so callers don't need to re-supply them
+        saved = {
+            "host": self.host,
+            "port": self.port,
+            "gpu_device": self.gpu_device,
+            "log_prefix": self._log_prefix,
+            "log_callback": self._log_callback,
+        }
         self.stop_server()
         time.sleep(2)
+
+        # Merge saved defaults with any explicit overrides
+        for key, value in saved.items():
+            start_kwargs.setdefault(key, value)
+
         return self.start_server(progress_callback=progress_callback, **start_kwargs)
 
     def check_health(self) -> Dict:

@@ -6,6 +6,8 @@ from .comfy_installer import ComfyInstaller
 from .model_downloader import ModelDownloader
 from .custom_node_manager import CustomNodeManager
 from .server_manager import ServerManager
+from .gpu_manager import GPUManager, GPUInfo
+from .instance_manager import InstanceManager, InstanceConfig, InstanceState
 from .comfy_api import ComfyAPI, QueueStatus, SystemStats
 from .workflow_executor import WorkflowExecutor, BatchExecutor, ExecutionProgress, ExecutionResult
 from .python_manager import PythonManager
@@ -19,6 +21,12 @@ __all__ = [
     "ModelDownloader",
     "CustomNodeManager",
     "ServerManager",
+    # GPU & Multi-Instance
+    "GPUManager",
+    "GPUInfo",
+    "InstanceManager",
+    "InstanceConfig",
+    "InstanceState",
     # Portable Environment
     "PythonManager",
     "GitManager",

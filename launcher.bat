@@ -68,11 +68,14 @@ echo Server options (for 'run' command):
 echo   --port PORT     Server port (default: 8188)
 echo   --host HOST     Server host (default: 127.0.0.1)
 echo   --vram MODE     VRAM mode: normal, low, none, cpu
+echo   --gpu DEVICE    GPU index (0, 1, ...) or 'cpu' (default: all GPUs)
 echo.
 echo Examples:
 echo   launcher.bat                     Launch GUI
 echo   launcher.bat run                 Start server with defaults
 echo   launcher.bat run --port 8189     Start server on port 8189
+echo   launcher.bat run --gpu 0         Pin to GPU 0
+echo   launcher.bat run --gpu cpu       CPU-only mode
 echo.
 pause
 exit /b 0

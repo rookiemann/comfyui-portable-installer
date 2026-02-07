@@ -45,7 +45,7 @@ Examples:
     )
     parser.add_argument(
         "--purge", action="store_true",
-        help="Purge ComfyUI (keeps venv and models)"
+        help="Purge ComfyUI (keeps Python environment and models)"
     )
     parser.add_argument(
         "--purge-all", action="store_true",
@@ -64,6 +64,10 @@ Examples:
         default="normal",
         help="VRAM mode (default: normal)"
     )
+    parser.add_argument(
+        "--gpu", type=str, default=None,
+        help="GPU device index (0, 1, ...) or 'cpu'. Default: use all GPUs"
+    )
 
     args = parser.parse_args()
 
@@ -71,7 +75,7 @@ Examples:
     if args.install:
         return run_install()
     elif args.start:
-        return run_server(args.host, args.port, args.vram)
+        return run_server(args.host, args.port, args.vram, args.gpu)
     elif args.stop:
         return stop_server()
     elif args.purge:
@@ -133,9 +137,10 @@ def run_install():
         return 1
 
 
-def run_server(host: str, port: int, vram_mode: str):
+def run_server(host: str, port: int, vram_mode: str, gpu_device: str = None):
     """Start the ComfyUI server."""
-    print(f"Starting ComfyUI server on {host}:{port}...")
+    gpu_desc = f" on GPU {gpu_device}" if gpu_device and gpu_device != "cpu" else (" on CPU" if gpu_device == "cpu" else "")
+    print(f"Starting ComfyUI server on {host}:{port}{gpu_desc}...")
 
     try:
         from core.server_manager import ServerManager
@@ -156,7 +161,8 @@ def run_server(host: str, port: int, vram_mode: str):
             host=host,
             port=port,
             vram_mode=vram_mode,
-            log_callback=log_callback
+            log_callback=log_callback,
+            gpu_device=gpu_device,
         )
 
         if success:
@@ -210,7 +216,7 @@ def run_purge(purge_all: bool = False):
         print("WARNING: This will delete EVERYTHING including models!")
     else:
         print("ComfyUI Module - Purge ComfyUI")
-        print("This will delete ComfyUI but KEEP venv and models.")
+        print("This will delete ComfyUI but KEEP Python environment and models.")
 
     print("=" * 40)
 
@@ -236,7 +242,7 @@ def run_purge(purge_all: bool = False):
         if success:
             print("\nPurge completed successfully!")
             if purge_all:
-                print("Run setup_venv.bat to reinstall everything.")
+                print("Run install.bat to reinstall everything.")
             else:
                 print("Run with --install for fresh ComfyUI installation.")
             return 0

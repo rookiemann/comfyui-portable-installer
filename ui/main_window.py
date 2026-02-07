@@ -22,7 +22,7 @@ class MainWindow:
         self.root = tk.Tk()
         self.root.title(WINDOW_TITLE)
         self.root.geometry(WINDOW_SIZE)
-        self.root.minsize(900, 650)
+        self.root.minsize(1050, 750)
 
         # Set icon if available
         icon_path = BASE_DIR / "icon.ico"
@@ -160,13 +160,15 @@ class MainWindow:
         if self.root.winfo_exists():
             self.status_label.config(text=message)
 
-    def set_server_status(self, running: bool, url: str = ""):
+    def set_server_status(self, running: bool, url: str = "", count: int = 1):
         """Update server status indicator."""
         if self.root.winfo_exists():
-            if running:
-                self.server_status.config(text=f"Server: Running ({url})")
-            else:
+            if not running:
                 self.server_status.config(text="Server: Stopped")
+            elif count > 1:
+                self.server_status.config(text=f"Server: {count} instances running")
+            else:
+                self.server_status.config(text=f"Server: Running ({url})")
 
     def run_async(self, func, callback=None):
         """Run a function in a background thread."""
@@ -220,8 +222,8 @@ class MainWindow:
             "   For beginners, try 'Flux.1 Schnell FP8' -- it's fast\n"
             "   and works well on 8GB+ GPUs.\n\n"
             "3. START THE SERVER\n"
-            "   Back on 'Install & Run', click 'Start Server',\n"
-            "   then 'Open in Browser' to use ComfyUI.\n\n"
+            "   Back on 'Install & Run', add an instance (pick a GPU),\n"
+            "   select it, click 'Start', then 'Open UI' to use ComfyUI.\n\n"
             "4. CUSTOM NODES (Optional)\n"
             "   Go to 'Custom Nodes' and click 'Recommended' to\n"
             "   install popular quality-of-life extensions.\n\n"
@@ -296,10 +298,11 @@ class MainWindow:
 
     def _on_close(self):
         """Handle window close."""
-        # Stop server if running
-        if hasattr(self.install_tab, 'server_manager') and self.install_tab.server_manager.is_running:
-            if messagebox.askyesno("Confirm Exit", "ComfyUI server is running. Stop it and exit?"):
-                self.install_tab.server_manager.stop_server()
+        # Stop all running instances
+        if hasattr(self.install_tab, 'instance_manager') and self.install_tab.instance_manager.any_running():
+            count = self.install_tab.instance_manager.get_running_count()
+            if messagebox.askyesno("Confirm Exit", f"{count} ComfyUI instance(s) running. Stop all and exit?"):
+                self.install_tab.instance_manager.stop_all()
             else:
                 return
 

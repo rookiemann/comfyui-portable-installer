@@ -76,6 +76,11 @@ COMFYUI_REPO = "https://github.com/Comfy-Org/ComfyUI.git"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8188
 
+# Multi-instance defaults
+MAX_INSTANCES = 8
+PORT_RANGE_START = 8188
+PORT_RANGE_END = 8199
+
 # Model categories matching ComfyUI structure
 MODEL_CATEGORIES = [
     "checkpoints",
@@ -150,5 +155,5 @@ EXTRA_FLAGS = {
 
 # UI Settings
 WINDOW_TITLE = "ComfyUI Module - Installer & Manager"
-WINDOW_SIZE = "1000x750"
+WINDOW_SIZE = "1150x850"
 APP_VERSION = "1.0.0"

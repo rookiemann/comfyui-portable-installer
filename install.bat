@@ -72,7 +72,7 @@ del "%PYTHON_ZIP%" 2>nul
 :: ============================================
 :: Step 2: Configure ._pth for site-packages
 :: ============================================
-echo [2/8] Configuring Python for package installation...
+echo [3/8] Configuring Python for package installation...
 
 :: Create Lib\site-packages directory
 if not exist "%PYTHON_DIR%\Lib\site-packages" (
@@ -86,7 +86,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
          $pth = $pthFiles[0]; ^
          $zipName = (Get-ChildItem '%PYTHON_DIR%\python*.zip' | Select-Object -First 1).Name; ^
          if (-not $zipName) { $zipName = 'python312.zip' }; ^
-         $content = @($zipName, '.', 'Lib', 'Lib\site-packages', '', 'import site'); ^
+         $content = @($zipName, '.', 'Lib', 'Lib\site-packages', 'DLLs', '..\comfyui', '', 'import site'); ^
          $content | Set-Content -Path $pth.FullName -Encoding ASCII; ^
          Write-Host '   Configured:' $pth.Name ^
      } else { ^
@@ -170,7 +170,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 del "%GIT_ZIP%" 2>nul
 
 :: ============================================
-:: Step 5: Download Portable FFmpeg
+:: Step 6: Download Portable FFmpeg
 :: ============================================
 :check_ffmpeg
 if exist "%FFMPEG_EXE%" (

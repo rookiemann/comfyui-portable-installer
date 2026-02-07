@@ -111,6 +111,11 @@ class PythonManager:
 
                 self._bootstrap_pip(progress_callback)
 
+            # Step 6: Set up tkinter (not included in embeddable distribution)
+            if progress_callback:
+                progress_callback(90, 100, "Setting up tkinter...")
+            self.setup_tkinter(progress_callback)
+
             if progress_callback:
                 progress_callback(100, 100, "Embedded Python ready")
             return True
@@ -173,6 +178,8 @@ class PythonManager:
             ".",
             "Lib",
             "Lib\\site-packages",
+            "DLLs",
+            "..\\comfyui",
             "",
             "import site",
         ]
@@ -321,8 +328,8 @@ class PythonManager:
         """Download and install tkinter for embedded Python.
 
         The embeddable Python distribution does not include tkinter.
-        We download the matching Python NuGet package and extract just
-        the tkinter files (_tkinter.pyd, tcl/tk DLLs, Lib/tkinter/, tcl/).
+        We download the official tcltk.msi component from python.org and
+        extract _tkinter.pyd, tcl/tk DLLs, Lib/tkinter/, and tcl/ dirs.
 
         Args:
             progress_callback: Optional callback(current, total, message)
@@ -346,53 +353,59 @@ class PythonManager:
         if progress_callback:
             progress_callback(0, 100, "Downloading tkinter components...")
 
+        msi_url = f"https://www.python.org/ftp/python/{PYTHON_VERSION}/amd64/tcltk.msi"
+        msi_path = self.base_dir / "_tcltk.msi"
+        extract_dir = self.base_dir / "_tcltk_extract"
+
         try:
             import shutil
-            nuget_url = f"https://www.nuget.org/api/v2/package/python/{PYTHON_VERSION}"
-            zip_path = self.base_dir / "_python_nuget.zip"
 
-            self._download_nuget(nuget_url, zip_path, progress_callback)
+            # Download tcltk.msi (~3.4 MB)
+            self._download_file_simple(msi_url, msi_path, progress_callback,
+                                       label="tkinter", pct_range=(5, 60))
 
             if progress_callback:
-                progress_callback(70, 100, "Extracting tkinter files...")
+                progress_callback(65, 100, "Extracting tkinter files...")
 
-            # Files we need from the NuGet package (inside tools/ prefix)
-            needed_dlls = {"_tkinter.pyd", "tcl86t.dll", "tk86t.dll"}
+            # Extract MSI using msiexec (built into Windows)
+            if extract_dir.exists():
+                shutil.rmtree(extract_dir)
+            subprocess.run(
+                ["msiexec", "/a", str(msi_path), "/qn",
+                 f"TARGETDIR={extract_dir}"],
+                capture_output=True, timeout=60
+            )
 
-            with zipfile.ZipFile(zip_path, 'r') as zf:
-                for member in zf.namelist():
-                    # _tkinter.pyd, tcl86t.dll, tk86t.dll → python_embedded/
-                    if member.startswith("tools/DLLs/"):
-                        fname = Path(member).name
-                        if fname in needed_dlls:
-                            target = self.python_dir / fname
-                            with zf.open(member) as src:
-                                target.write_bytes(src.read())
+            if progress_callback:
+                progress_callback(75, 100, "Installing tkinter files...")
 
-                    # Lib/tkinter/ → python_embedded/Lib/tkinter/
-                    elif member.startswith("tools/Lib/tkinter/"):
-                        rel = member[len("tools/"):]
-                        target = self.python_dir / rel
-                        if member.endswith("/"):
-                            target.mkdir(parents=True, exist_ok=True)
-                        else:
-                            target.parent.mkdir(parents=True, exist_ok=True)
-                            with zf.open(member) as src:
-                                target.write_bytes(src.read())
+            # Copy DLLs next to python.exe (required for DLL loading)
+            dlls_dir = extract_dir / "DLLs"
+            for name in ("_tkinter.pyd", "tcl86t.dll", "tk86t.dll", "zlib1.dll"):
+                src = dlls_dir / name
+                if src.exists():
+                    shutil.copy2(src, self.python_dir / name)
 
-                    # tcl/ directory → python_embedded/tcl/
-                    elif member.startswith("tools/tcl/"):
-                        rel = member[len("tools/"):]
-                        target = self.python_dir / rel
-                        if member.endswith("/"):
-                            target.mkdir(parents=True, exist_ok=True)
-                        else:
-                            target.parent.mkdir(parents=True, exist_ok=True)
-                            with zf.open(member) as src:
-                                target.write_bytes(src.read())
+            # Copy Lib/tkinter/ package
+            tk_src = extract_dir / "Lib" / "tkinter"
+            tk_dst = self.python_dir / "Lib" / "tkinter"
+            if tk_src.exists():
+                if tk_dst.exists():
+                    shutil.rmtree(tk_dst)
+                shutil.copytree(tk_src, tk_dst)
+
+            # Copy tcl/ library (tcl8.6, tk8.6)
+            tcl_src = extract_dir / "tcl"
+            tcl_dst = self.python_dir / "tcl"
+            if tcl_src.exists():
+                if tcl_dst.exists():
+                    shutil.rmtree(tcl_dst)
+                shutil.copytree(tcl_src, tcl_dst)
 
             # Clean up
-            zip_path.unlink(missing_ok=True)
+            msi_path.unlink(missing_ok=True)
+            if extract_dir.exists():
+                shutil.rmtree(extract_dir, ignore_errors=True)
 
             if progress_callback:
                 progress_callback(90, 100, "Verifying tkinter...")
@@ -414,19 +427,23 @@ class PythonManager:
 
         except Exception as e:
             # Clean up on failure
-            zip_path = self.base_dir / "_python_nuget.zip"
-            zip_path.unlink(missing_ok=True)
+            msi_path.unlink(missing_ok=True)
+            if extract_dir.exists():
+                import shutil
+                shutil.rmtree(extract_dir, ignore_errors=True)
             if progress_callback:
                 progress_callback(0, 100, f"tkinter setup failed: {e}")
             return False
 
-    def _download_nuget(
+    def _download_file_simple(
         self,
         url: str,
         dest: Path,
-        progress_callback: Optional[Callable] = None
+        progress_callback: Optional[Callable] = None,
+        label: str = "file",
+        pct_range: tuple = (5, 50),
     ):
-        """Download the Python NuGet package (follows redirects)."""
+        """Download a file with progress reporting."""
         import urllib.request
         import ssl
 
@@ -439,6 +456,7 @@ class PythonManager:
             total_size = int(response.headers.get("Content-Length", 0))
             downloaded = 0
             block_size = 65536
+            pct_start, pct_end = pct_range
 
             with open(dest, "wb") as f:
                 while True:
@@ -448,10 +466,10 @@ class PythonManager:
                     f.write(chunk)
                     downloaded += len(chunk)
                     if progress_callback and total_size > 0:
-                        pct = int(downloaded / total_size * 65) + 5  # 5-70% range
-                        mb = downloaded // (1024 * 1024)
-                        total_mb = total_size // (1024 * 1024)
-                        progress_callback(pct, 100, f"Downloading tkinter... {mb}/{total_mb} MB")
+                        pct = int(downloaded / total_size * (pct_end - pct_start)) + pct_start
+                        mb = downloaded / (1024 * 1024)
+                        total_mb = total_size / (1024 * 1024)
+                        progress_callback(pct, 100, f"Downloading {label}... {mb:.1f}/{total_mb:.1f} MB")
 
     def get_python_version(self) -> Optional[str]:
         """Get the version string of the embedded Python."""

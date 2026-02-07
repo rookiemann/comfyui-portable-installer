@@ -27,7 +27,7 @@ Getting ComfyUI running typically means:
 2. Double-click install.bat
 3. Click "Full Install" in the GUI
 4. Go to Models tab, download a model
-5. Click "Start Server" then "Open in Browser"
+5. Add a server instance, click "Start", then "Open UI"
 ```
 
 That's it. No `pip install`, no `conda activate`, no `docker compose up`, no YAML configs.
@@ -40,6 +40,9 @@ launcher.bat                       :: Launch the management GUI
 launcher.bat run                   :: Start ComfyUI server directly
 launcher.bat run --port 8189       :: Custom port
 launcher.bat run --vram low        :: Low VRAM mode for 4-6GB GPUs
+launcher.bat run --gpu 0           :: Pin to GPU 0
+launcher.bat run --gpu 1 --port 8189  :: GPU 1 on port 8189
+launcher.bat run --gpu cpu         :: CPU-only mode
 launcher.bat purge                 :: Remove ComfyUI (keeps models + Python)
 launcher.bat help                  :: Show all commands
 ```
@@ -52,7 +55,7 @@ launcher.bat help                  :: Show all commands
 |-----------|---------|--------|---------|
 | Python | 3.12.8 (embeddable) | [python.org](https://www.python.org/downloads/) | Runs everything. No system Python needed. |
 | pip | Latest | [bootstrap.pypa.io](https://bootstrap.pypa.io/get-pip.py) | Python package installer |
-| tkinter | 3.12.8 | [nuget.org](https://www.nuget.org/packages/python/) | GUI toolkit for the installer |
+| tkinter | 3.12.8 | [python.org](https://www.python.org/ftp/python/3.12.8/amd64/) | GUI toolkit for the installer |
 | Git | MinGit 2.47.1 | [git-for-windows](https://github.com/git-for-windows/git/releases) | Clones ComfyUI + custom nodes |
 | FFmpeg | Latest stable | [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) | Video encode/decode for custom nodes |
 | PyTorch | Latest (cu128) | [pytorch.org](https://pytorch.org/) | GPU-accelerated inference |
@@ -73,11 +76,13 @@ Everything lives inside the project folder. Nothing is installed system-wide.
 
 ### Management GUI
 - Visual installer with real-time progress and log output
-- VRAM mode selector with descriptions for each GPU tier
+- **Multi-GPU instance management** -- auto-detects all NVIDIA GPUs, run one ComfyUI instance per GPU (or multiple per GPU)
+- Instance table showing device, port, VRAM mode, status, and URL for each instance
+- Start/stop individual instances, or Start All/Stop All with one click
+- Per-instance VRAM mode, startup flags, and port configuration
 - **One-click SageAttention install** (Triton + SageAttention for 2-3x faster attention, great for video)
-- Startup flags (SageAttention, CUDA Malloc, BF16/FP16 precision, live preview)
-- One-click server start/stop with browser launch
-- First-launch guidance for new users
+- Startup flag tooltips explaining each option (hover for details)
+- First-launch guidance and help menus for new users
 
 ### Model Management
 - **101 pre-defined models** covering every ComfyUI default workflow template
@@ -168,6 +173,51 @@ Pre-defined models for all of ComfyUI's 312 default workflow templates:
 
 ---
 
+## Multi-GPU & Multi-Instance
+
+Run multiple ComfyUI servers in parallel -- one per GPU, or several per GPU if VRAM allows.
+
+### How It Works
+
+1. **GPU Detection** -- On launch, the GUI runs `nvidia-smi` to enumerate all NVIDIA GPUs. A dropdown lists each GPU with its name and VRAM, plus a "CPU (no GPU)" fallback.
+
+2. **Instance Management** -- Add instances from the GUI, each configured with:
+   - GPU device (pinned via `CUDA_VISIBLE_DEVICES`)
+   - Port (auto-increments: 8188, 8189, ...)
+   - VRAM mode and startup flags
+
+3. **Parallel Execution** -- Start all instances simultaneously. Each runs as an isolated subprocess with its own GPU, port, and log prefix (e.g., `[GPU0:8188]`, `[GPU1:8189]`).
+
+### Example: Dual GPU Setup
+
+| Instance | GPU | Port | URL |
+|----------|-----|------|-----|
+| gpu0_8188 | GPU 0: RTX 3060 (12GB) | 8188 | http://127.0.0.1:8188 |
+| gpu1_8189 | GPU 1: RTX 3090 (24GB) | 8189 | http://127.0.0.1:8189 |
+
+Both instances run independently -- submit different workflows to each, or batch the same workflow across both GPUs.
+
+### CLI Multi-GPU
+
+```batch
+:: Terminal 1: GPU 0 on default port
+launcher.bat run --gpu 0
+
+:: Terminal 2: GPU 1 on port 8189
+launcher.bat run --gpu 1 --port 8189
+
+:: CPU-only mode
+launcher.bat run --gpu cpu
+```
+
+### Limits
+
+- Up to **8 simultaneous instances** (configurable in `config.py`)
+- Port range: 8188-8199 by default
+- Each instance uses its own VRAM -- make sure your GPU has enough for the model + workflow
+
+---
+
 ## Directory Structure
 
 ```
@@ -187,6 +237,8 @@ comfy_module/
 │   ├── model_downloader.py   #   HuggingFace model downloads
 │   ├── custom_node_manager.py #  Custom node install/update/remove
 │   ├── server_manager.py     #   Start/stop ComfyUI server process
+│   ├── gpu_manager.py        #   NVIDIA GPU detection via nvidia-smi
+│   ├── instance_manager.py   #   Multi-instance server orchestration
 │   ├── comfy_api.py          #   Full ComfyUI REST API client (48 methods)
 │   └── workflow_executor.py  #   Workflow execution with progress tracking
 │
@@ -226,11 +278,26 @@ from core import (
     ComfyAPI, ComfyInstaller, ModelDownloader,
     ServerManager, WorkflowExecutor,
     PythonManager, GitManager, FfmpegManager,
+    GPUManager, GPUInfo, InstanceManager, InstanceConfig,
 )
 
-# Start server programmatically
+# Detect GPUs
+gpus = GPUManager.detect_gpus()
+for gpu in gpus:
+    print(f"GPU {gpu.index}: {gpu.name} ({gpu.memory_total_mb} MB)")
+
+# Start a single server on a specific GPU
 server = ServerManager()
-server.start_server(port=8188, vram_mode="normal")
+server.start_server(port=8188, vram_mode="normal", gpu_device="0")
+
+# Or manage multiple instances
+mgr = InstanceManager()
+mgr.add_instance(InstanceConfig(gpu_device="0", gpu_label="GPU 0", port=8188))
+mgr.add_instance(InstanceConfig(gpu_device="1", gpu_label="GPU 1", port=8189))
+mgr.start_instance("gpu0_8188")
+mgr.start_instance("gpu1_8189")
+# ... later
+mgr.stop_all()
 
 # Full REST API
 api = ComfyAPI(port=8188)

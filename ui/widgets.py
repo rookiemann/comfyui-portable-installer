@@ -280,6 +280,52 @@ class LabeledEntry(ttk.Frame):
         self.var.set(value)
 
 
+class ToolTip:
+    """Hover tooltip for any tkinter widget."""
+
+    def __init__(self, widget, text: str, delay: int = 400):
+        self.widget = widget
+        self.text = text
+        self.delay = delay
+        self._tip_window = None
+        self._after_id = None
+        widget.bind("<Enter>", self._on_enter, add="+")
+        widget.bind("<Leave>", self._on_leave, add="+")
+
+    def _on_enter(self, event=None):
+        self._after_id = self.widget.after(self.delay, self._show)
+
+    def _on_leave(self, event=None):
+        if self._after_id:
+            self.widget.after_cancel(self._after_id)
+            self._after_id = None
+        self._hide()
+
+    def _show(self):
+        if self._tip_window:
+            return
+        x = self.widget.winfo_rootx() + 20
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self._tip_window = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(
+            tw, text=self.text, justify=tk.LEFT,
+            background="#ffffe1", relief=tk.SOLID, borderwidth=1,
+            font=("Segoe UI", 8), wraplength=300, padx=6, pady=4,
+        )
+        label.pack()
+
+    def _hide(self):
+        if self._tip_window:
+            self._tip_window.destroy()
+            self._tip_window = None
+
+    def update_text(self, text: str):
+        """Change the tooltip text."""
+        self.text = text
+
+
 class LabeledCombobox(ttk.Frame):
     """A combobox with a label."""
 
@@ -289,17 +335,18 @@ class LabeledCombobox(ttk.Frame):
         label: str,
         values: list,
         default: Optional[str] = None,
+        width: int = 15,
         **kwargs
     ):
         super().__init__(parent, **kwargs)
-        self._setup_ui(label, values, default)
+        self._setup_ui(label, values, default, width)
 
-    def _setup_ui(self, label: str, values: list, default: Optional[str]):
+    def _setup_ui(self, label: str, values: list, default: Optional[str], width: int):
         ttk.Label(self, text=label).pack(side=tk.LEFT, padx=(0, 5))
 
         self.var = tk.StringVar(value=default or (values[0] if values else ""))
         self.combo = ttk.Combobox(
-            self, textvariable=self.var, values=values, state="readonly", width=15
+            self, textvariable=self.var, values=values, state="readonly", width=width
         )
         self.combo.pack(side=tk.LEFT)
 
