@@ -1,5 +1,7 @@
 # ComfyUI Module
 
+![License: MIT](https://img.shields.io/github/license/rookiemann/comfyui-portable-installer) ![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue) ![Python](https://img.shields.io/badge/Python-3.12-green) ![ComfyUI](https://img.shields.io/badge/ComfyUI-Latest-purple)
+
 **One click. No Docker. No Python. No Git. No admin rights. Fully portable.**
 
 Drop this folder on any Windows 10/11 machine, double-click `install.bat`, and walk away. When it's done you have a complete, working [ComfyUI](https://github.com/comfyanonymous/ComfyUI) installation with GPU acceleration, model downloads, and a management GUI. Copy the folder to a USB drive and it still works.
