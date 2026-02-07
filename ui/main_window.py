@@ -155,6 +155,11 @@ class MainWindow:
         y = (self.root.winfo_screenheight() // 2) - (height // 2)
         self.root.geometry(f"+{x}+{y}")
 
+    def log(self, message: str):
+        """Write a message to the shared log panel (Install & Run tab)."""
+        if self.root.winfo_exists() and hasattr(self, 'install_tab'):
+            self.install_tab.log.log(message)
+
     def set_status(self, message: str):
         """Update the status bar message."""
         if self.root.winfo_exists():

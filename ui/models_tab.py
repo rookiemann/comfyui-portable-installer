@@ -165,7 +165,7 @@ class ModelsTab(ttk.Frame):
             "                    Same model, quantized to fit lower VRAM.\n\n"
             "  4GB GPU:   Filter by 'checkpoints', download 'SD 1.5 FP16' (1.7 GB)\n"
             "                    Older but lightweight. Use 'low' VRAM mode.\n\n"
-            "After downloading, go back to Install & Run, click Start Server, then Open in Browser."
+            "After downloading, go back to Install & Run, add an instance, click Start, then Open UI."
         )
         ttk.Label(
             self.starter_frame, text=starter_text,
@@ -281,15 +281,30 @@ class ModelsTab(ttk.Frame):
             return
 
         models_to_download = []
+        already_installed = []
         total_size = 0
         for model_id in selected:
             if model_id in MODELS:
-                models_to_download.append({**MODELS[model_id], "id": model_id})
-                total_size += MODELS[model_id].get("size_gb", 0)
+                info = MODELS[model_id]
+                if self.downloader.check_model_exists(info):
+                    already_installed.append(info.get("name", model_id))
+                else:
+                    models_to_download.append({**info, "id": model_id})
+                    total_size += info.get("size_gb", 0)
+
+        if already_installed:
+            self.main_window.log(f"{len(already_installed)} model(s) already installed, skipping:")
+            for name in already_installed:
+                self.main_window.log(f"  - {name}")
+
+        if not models_to_download:
+            self.main_window.set_status("All selected models are already installed.")
+            self.main_window.log("All selected models are already installed.")
+            return
 
         if not messagebox.askyesno(
             "Confirm Download",
-            f"Download {len(models_to_download)} models?\n"
+            f"Download {len(models_to_download)} model(s)?\n"
             f"Total size: ~{total_size:.1f} GB\n\n"
             "Models are saved into ComfyUI's native models/ directory\n"
             "and will be preserved if you purge and reinstall."
@@ -325,11 +340,25 @@ class ModelsTab(ttk.Frame):
     def _start_download(self, models: list):
         """Start downloading models."""
         total = len(models)
-        self.main_window.set_status(f"Downloading {total} models...")
+        names = [m.get("name", m.get("filename", "?")) for m in models]
+        total_gb = sum(m.get("size_gb", 0) for m in models)
 
-        def progress_callback(current, total, message):
+        self.main_window.set_status(f"Downloading {total} model(s)...")
+        self.main_window.log(f"Starting download of {total} model(s) (~{total_gb:.1f} GB):")
+        for name in names:
+            self.main_window.log(f"  - {name}")
+
+        # Track the last message to avoid flooding the log with duplicate percent updates
+        last_logged = {"msg": ""}
+
+        def progress_callback(current, total_steps, message):
             if self.winfo_exists():
-                self.after(0, lambda: self.progress.update_progress(current, total, message))
+                self.after(0, lambda: self.progress.update_progress(current, total_steps, message))
+                # Forward meaningful messages to the log (skip repeated % updates)
+                base = message.split("...")[0] + "..." if "..." in message else message
+                if base != last_logged["msg"]:
+                    last_logged["msg"] = base
+                    self.after(0, lambda m=message: self.main_window.log(m))
 
         def do_download():
             return self.downloader.download_multiple(models, progress_callback)
@@ -339,10 +368,18 @@ class ModelsTab(ttk.Frame):
             fail_count = len(results) - success_count
 
             if fail_count == 0:
-                self.main_window.set_status(f"Downloaded {success_count} models successfully")
+                msg = f"Downloaded {success_count} model(s) successfully."
+                self.main_window.set_status(msg)
+                self.main_window.log(msg)
             else:
-                self.main_window.set_status(f"Downloaded {success_count}, failed {fail_count}")
+                msg = f"Downloads finished: {success_count} succeeded, {fail_count} failed."
+                self.main_window.set_status(msg)
+                self.main_window.log(msg)
+                for name, ok in results.items():
+                    if not ok:
+                        self.main_window.log(f"  FAILED: {name}")
 
+            self.progress.update_progress(100, 100, "Done")
             self._refresh_models()
 
         self.main_window.run_async(do_download, on_complete)
