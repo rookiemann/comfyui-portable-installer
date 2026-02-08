@@ -23,11 +23,17 @@ _models_backup/
 .hf_cache/
 .cache/
 
+# Runtime data (generated at runtime)
+settings.json
+module_model_paths.yaml
+nul
+
 # Temp files
 *.zip
 *.tmp
 _bootstrap_test.ps1
 _test_suite.py
+_verify.py
 
 # IDE / tool files
 .claude/

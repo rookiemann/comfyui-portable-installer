@@ -34,6 +34,14 @@ class ComfyInstaller:
         """Check if ComfyUI is installed."""
         return (self.comfyui_dir / "main.py").exists()
 
+    @property
+    def is_external(self) -> bool:
+        """True when targeting an external ComfyUI (not the built-in one)."""
+        try:
+            return self.comfyui_dir.resolve() != COMFYUI_DIR.resolve()
+        except (OSError, ValueError):
+            return False
+
     def clone_comfyui(
         self,
         progress_callback: Optional[Callable] = None,
@@ -145,11 +153,20 @@ class ComfyInstaller:
         return all(pkg in installed for pkg in required)
 
     def full_install(self, progress_callback: Optional[Callable] = None) -> bool:
-        """Perform full installation: Python env, PyTorch, clone, requirements, model dirs."""
+        """Perform full installation: Python env, PyTorch, clone, requirements, model dirs.
+
+        When targeting an external ComfyUI the clone step is skipped
+        (the repo already exists on disk).
+        """
         steps = [
             ("Setting up Python environment...", self.venv_manager.create_venv),
             ("Installing PyTorch...", self.venv_manager.install_pytorch_cuda),
-            ("Cloning ComfyUI...", self.clone_comfyui),
+        ]
+
+        if not self.is_external:
+            steps.append(("Cloning ComfyUI...", self.clone_comfyui))
+
+        steps += [
             ("Installing ComfyUI requirements...", self.install_requirements),
             ("Creating model directories...", self.create_model_directories),
         ]
@@ -229,7 +246,13 @@ class ComfyInstaller:
         - Downloaded models (backed up to _models_backup/ then restored on reinstall)
 
         After purge, you can run full_install() again for a fresh start.
+        Purging is blocked when targeting an external ComfyUI.
         """
+        if self.is_external:
+            if progress_callback:
+                progress_callback(0, 100, "Cannot purge an external ComfyUI installation")
+            return False
+
         if not self.comfyui_dir.exists():
             if progress_callback:
                 progress_callback(100, 100, "ComfyUI not installed, nothing to purge")
@@ -284,7 +307,13 @@ class ComfyInstaller:
         WARNING: This removes all downloaded models!
 
         After this, run install.bat and full_install() for a complete fresh start.
+        Purging is blocked when targeting an external ComfyUI.
         """
+        if self.is_external:
+            if progress_callback:
+                progress_callback(0, 100, "Cannot purge an external ComfyUI installation")
+            return False
+
         try:
             if progress_callback:
                 progress_callback(0, 100, "Purging all installations...")

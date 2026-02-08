@@ -48,6 +48,7 @@ if /i "%COMMAND%"=="install" goto :run_install
 if /i "%COMMAND%"=="run" goto :run_server
 if /i "%COMMAND%"=="gui" goto :run_install
 if /i "%COMMAND%"=="start" goto :run_server
+if /i "%COMMAND%"=="api" goto :run_api
 if /i "%COMMAND%"=="purge" goto :run_purge
 
 echo Unknown command: %COMMAND%
@@ -60,6 +61,7 @@ echo.
 echo Commands:
 echo   install, gui    Launch the installer GUI (default)
 echo   run, start      Start ComfyUI server directly
+echo   api             Start the REST API server
 echo   setup           Run install.bat for full environment setup
 echo   purge           Purge ComfyUI (keeps models and Python)
 echo   help            Show this help
@@ -70,12 +72,18 @@ echo   --host HOST     Server host (default: 127.0.0.1)
 echo   --vram MODE     VRAM mode: normal, low, none, cpu
 echo   --gpu DEVICE    GPU index (0, 1, ...) or 'cpu' (default: all GPUs)
 echo.
+echo API options (for 'api' command):
+echo   --api-port PORT  API port (default: 5000)
+echo   --api-host HOST  API host (default: 127.0.0.1)
+echo.
 echo Examples:
 echo   launcher.bat                     Launch GUI
 echo   launcher.bat run                 Start server with defaults
 echo   launcher.bat run --port 8189     Start server on port 8189
 echo   launcher.bat run --gpu 0         Pin to GPU 0
 echo   launcher.bat run --gpu cpu       CPU-only mode
+echo   launcher.bat api                 Start REST API on port 5000
+echo   launcher.bat api --api-port 8080 Start REST API on port 8080
 echo.
 pause
 exit /b 0
@@ -119,6 +127,27 @@ goto :collect_args
 if errorlevel 1 (
     echo.
     echo ERROR: Server exited with an error.
+    echo.
+    pause
+)
+exit /b 0
+
+:run_api
+echo Starting ComfyUI Module REST API...
+
+:: Collect remaining arguments
+set "API_ARGS="
+:collect_api_args
+shift
+if "%~1"=="" goto :start_api
+set "API_ARGS=%API_ARGS% %~1"
+goto :collect_api_args
+
+:start_api
+"%PYTHON_EXE%" "%SCRIPT_DIR%installer_app.py" --api %API_ARGS%
+if errorlevel 1 (
+    echo.
+    echo ERROR: API server exited with an error.
     echo.
     pause
 )

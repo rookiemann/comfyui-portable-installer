@@ -122,6 +122,16 @@ class ServerManager:
             if extra_args:
                 cmd.extend(extra_args)
 
+            # Generate and inject module model paths config
+            try:
+                from core.model_paths_manager import ModelPathsManager
+                from config import MODULE_MODEL_PATHS_YAML
+                ModelPathsManager.generate_yaml(self.comfyui_dir)
+                if MODULE_MODEL_PATHS_YAML.exists():
+                    cmd.extend(["--extra-model-paths-config", str(MODULE_MODEL_PATHS_YAML)])
+            except Exception:
+                pass  # Non-fatal — server can start without cross-references
+
             # Set up environment
             env = os.environ.copy()
             # Pin to a specific GPU, hide all GPUs for CPU mode, or clear restrictions

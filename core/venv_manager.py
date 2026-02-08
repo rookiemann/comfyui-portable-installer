@@ -24,6 +24,7 @@ class VenvManager:
 
     def __init__(self, venv_path: Optional[Path] = None, python_path: Optional[Path] = None):
         self._use_embedded = USE_EMBEDDED
+        self._packages_cache: Optional[list] = None
 
         if self._use_embedded:
             self._python_dir = PYTHON_EMBEDDED_DIR
@@ -130,6 +131,7 @@ class VenvManager:
                     progress_callback(0, 100, f"Error installing {package}: {result.stderr}")
                 return False
 
+            self.invalidate_cache()
             if progress_callback:
                 progress_callback(100, 100, f"Installed {package}")
             return True
@@ -172,6 +174,7 @@ class VenvManager:
                     progress_callback(0, 100, f"Error: {result.stderr}")
                 return False
 
+            self.invalidate_cache()
             if progress_callback:
                 progress_callback(100, 100, "Requirements installed")
             return True
@@ -252,7 +255,10 @@ class VenvManager:
             return False, str(e)
 
     def get_installed_packages(self) -> list:
-        """Get list of installed packages."""
+        """Get list of installed packages (cached per session)."""
+        if self._packages_cache is not None:
+            return self._packages_cache
+
         if not self.is_created:
             return []
 
@@ -262,11 +268,17 @@ class VenvManager:
             else:
                 cmd = [str(self.venv_pip), "list", "--format=freeze"]
 
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
             if result.returncode == 0:
-                return [line.split("==")[0] for line in result.stdout.strip().split("\n") if line]
+                packages = [line.split("==")[0] for line in result.stdout.strip().split("\n") if line]
+                self._packages_cache = packages
+                return packages
             return []
 
         except Exception:
             return []
+
+    def invalidate_cache(self):
+        """Clear the installed packages cache (call after install/uninstall)."""
+        self._packages_cache = None

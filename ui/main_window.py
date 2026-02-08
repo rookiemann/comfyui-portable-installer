@@ -8,11 +8,12 @@ import threading
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import WINDOW_TITLE, WINDOW_SIZE, BASE_DIR, APP_VERSION
+from config import WINDOW_TITLE, WINDOW_SIZE, BASE_DIR, APP_VERSION, get_active_comfyui_dir
 
 from ui.install_tab import InstallTab
 from ui.models_tab import ModelsTab
 from ui.nodes_tab import NodesTab
+from ui.log_tab import LogTab
 
 
 class MainWindow:
@@ -23,6 +24,9 @@ class MainWindow:
         self.root.title(WINDOW_TITLE)
         self.root.geometry(WINDOW_SIZE)
         self.root.minsize(1050, 750)
+
+        # Active ComfyUI path (may be external)
+        self.active_comfyui_dir = get_active_comfyui_dir()
 
         # Set icon if available
         icon_path = BASE_DIR / "icon.ico"
@@ -119,10 +123,12 @@ class MainWindow:
         self.install_tab = InstallTab(self.notebook, self)
         self.models_tab = ModelsTab(self.notebook, self)
         self.nodes_tab = NodesTab(self.notebook, self)
+        self.log_tab = LogTab(self.notebook, self)
 
         self.notebook.add(self.install_tab, text="  Install & Run  ")
         self.notebook.add(self.models_tab, text="  Models  ")
         self.notebook.add(self.nodes_tab, text="  Custom Nodes  ")
+        self.notebook.add(self.log_tab, text="  Log  ")
 
     def _setup_status_bar(self):
         """Set up the status bar."""
@@ -155,10 +161,12 @@ class MainWindow:
         y = (self.root.winfo_screenheight() // 2) - (height // 2)
         self.root.geometry(f"+{x}+{y}")
 
-    def log(self, message: str):
-        """Write a message to the shared log panel (Install & Run tab)."""
-        if self.root.winfo_exists() and hasattr(self, 'install_tab'):
-            self.install_tab.log.log(message)
+    def log(self, message: str, tag: str = "system"):
+        """Write a message to the central Log tab."""
+        if not self.root.winfo_exists():
+            return
+        if hasattr(self, 'log_tab'):
+            self.log_tab.log(message, tag=tag)
 
     def set_status(self, message: str):
         """Update the status bar message."""
@@ -174,6 +182,17 @@ class MainWindow:
                 self.server_status.config(text=f"Server: {count} instances running")
             else:
                 self.server_status.config(text=f"Server: Running ({url})")
+
+    def set_comfyui_dir(self, path):
+        """Propagate a ComfyUI directory change to all tabs."""
+        from pathlib import Path
+        path = Path(path)
+        self.active_comfyui_dir = path
+        # Propagate to each tab (install_tab drives the change, so skip it)
+        if hasattr(self, 'models_tab'):
+            self.models_tab.set_comfyui_dir(path)
+        if hasattr(self, 'nodes_tab'):
+            self.nodes_tab.set_comfyui_dir(path)
 
     def run_async(self, func, callback=None):
         """Run a function in a background thread."""
@@ -265,19 +284,18 @@ class MainWindow:
 
     def _open_models_folder(self):
         """Open models folder in file explorer."""
-        from config import MODELS_DIR
         import os
-        if MODELS_DIR.exists():
-            os.startfile(str(MODELS_DIR))
+        models_dir = self.active_comfyui_dir / "models"
+        if models_dir.exists():
+            os.startfile(str(models_dir))
         else:
             messagebox.showwarning("Warning", "Models folder does not exist yet.\nRun Full Install first.")
 
     def _open_comfyui_folder(self):
         """Open ComfyUI folder in file explorer."""
-        from config import COMFYUI_DIR
         import os
-        if COMFYUI_DIR.exists():
-            os.startfile(str(COMFYUI_DIR))
+        if self.active_comfyui_dir.exists():
+            os.startfile(str(self.active_comfyui_dir))
         else:
             messagebox.showwarning("Warning", "ComfyUI is not installed yet.\nRun Full Install first.")
 

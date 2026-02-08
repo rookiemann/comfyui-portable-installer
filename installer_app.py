@@ -28,6 +28,9 @@ Examples:
     python installer_app.py --install    # Run full install (no GUI)
     python installer_app.py --start      # Start ComfyUI server
     python installer_app.py --stop       # Stop ComfyUI server
+    python installer_app.py --api        # Start REST API server
+    python installer_app.py --comfyui-dir "E:\\other\\ComfyUI" --start
+                                         # Start an external ComfyUI
         """
     )
 
@@ -68,11 +71,39 @@ Examples:
         "--gpu", type=str, default=None,
         help="GPU device index (0, 1, ...) or 'cpu'. Default: use all GPUs"
     )
+    parser.add_argument(
+        "--api", action="store_true",
+        help="Start the REST API server instead of GUI"
+    )
+    parser.add_argument(
+        "--api-port", type=int, default=5000,
+        help="API server port (default: 5000)"
+    )
+    parser.add_argument(
+        "--api-host", type=str, default="127.0.0.1",
+        help="API server host (default: 127.0.0.1)"
+    )
+    parser.add_argument(
+        "--comfyui-dir", type=str, default=None,
+        help="Path to an external ComfyUI installation to manage"
+    )
 
     args = parser.parse_args()
 
+    # If an external ComfyUI directory was specified, persist it in settings
+    if args.comfyui_dir:
+        from config import save_settings
+        ext = Path(args.comfyui_dir).resolve()
+        if not (ext / "main.py").exists():
+            print(f"Error: No main.py found in {ext}")
+            print("Please specify a valid ComfyUI installation directory.")
+            return 1
+        save_settings({"comfyui_dir": str(ext)})
+
     # Handle command-line operations
-    if args.install:
+    if args.api:
+        return run_api(args.api_host, args.api_port)
+    elif args.install:
         return run_install()
     elif args.start:
         return run_server(args.host, args.port, args.vram, args.gpu)
@@ -121,7 +152,9 @@ def run_install():
             else:
                 print(f"\r{message}", end="", flush=True)
 
-        installer = ComfyInstaller()
+        from config import get_active_comfyui_dir
+        active = get_active_comfyui_dir()
+        installer = ComfyInstaller(comfyui_dir=active, models_dir=active / "models")
         success = installer.full_install(progress)
 
         print()  # New line after progress
@@ -147,12 +180,14 @@ def run_server(host: str, port: int, vram_mode: str, gpu_device: str = None):
         from core.comfy_installer import ComfyInstaller
 
         # Check if installed
-        installer = ComfyInstaller()
+        from config import get_active_comfyui_dir
+        active = get_active_comfyui_dir()
+        installer = ComfyInstaller(comfyui_dir=active)
         if not installer.is_installed:
             print("Error: ComfyUI is not installed. Run with --install first.")
             return 1
 
-        server = ServerManager()
+        server = ServerManager(comfyui_dir=active)
 
         def log_callback(line):
             print(line)
@@ -194,8 +229,9 @@ def stop_server():
 
     try:
         from core.server_manager import ServerManager
+        from config import get_active_comfyui_dir
 
-        server = ServerManager()
+        server = ServerManager(comfyui_dir=get_active_comfyui_dir())
         if server.is_running:
             server.stop_server()
             print("Server stopped.")
@@ -232,7 +268,9 @@ def run_purge(purge_all: bool = False):
         def progress(current, total, message):
             print(f"  {message}")
 
-        installer = ComfyInstaller()
+        from config import get_active_comfyui_dir
+        active = get_active_comfyui_dir()
+        installer = ComfyInstaller(comfyui_dir=active, models_dir=active / "models")
 
         if purge_all:
             success = installer.purge_all(progress)
@@ -252,6 +290,23 @@ def run_purge(purge_all: bool = False):
 
     except Exception as e:
         print(f"\nError during purge: {e}")
+        return 1
+
+
+def run_api(host: str = "127.0.0.1", port: int = 5000):
+    """Start the REST API server."""
+    print(f"Starting ComfyUI Module REST API on {host}:{port}...")
+
+    try:
+        from api.server import create_app, run_server
+        app = create_app()
+        run_server(app, host=host, port=port)
+        return 0
+    except ImportError as e:
+        print(f"Error importing API modules: {e}")
+        return 1
+    except Exception as e:
+        print(f"Error starting API server: {e}")
         return 1
 
 

@@ -37,10 +37,12 @@ class InstanceState:
 class InstanceManager:
     """Manages multiple ComfyUI server instances."""
 
-    def __init__(self, log_callback: Optional[Callable] = None):
+    def __init__(self, log_callback: Optional[Callable] = None,
+                 comfyui_dir: Optional[Path] = None):
         self._instances: Dict[str, InstanceState] = {}
         self._lock = threading.Lock()
         self._log_callback = log_callback
+        self.comfyui_dir = comfyui_dir
 
     def add_instance(self, config: InstanceConfig) -> str:
         """Add a new instance. Returns instance_id.
@@ -64,7 +66,7 @@ class InstanceManager:
                 instance_id = f"{base_id}_{counter}"
                 counter += 1
 
-            server = ServerManager()
+            server = ServerManager(comfyui_dir=self.comfyui_dir)
             state = InstanceState(
                 instance_id=instance_id,
                 config=config,

@@ -8,7 +8,7 @@ import threading
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import MODEL_CATEGORIES
+from config import MODEL_CATEGORIES, get_active_comfyui_dir
 
 from core.model_downloader import ModelDownloader
 from data.models_registry import MODELS, get_models_by_category
@@ -43,9 +43,16 @@ class ModelsTab(ttk.Frame):
     def __init__(self, parent, main_window):
         super().__init__(parent, padding=10)
         self.main_window = main_window
-        self.downloader = ModelDownloader()
+        active = get_active_comfyui_dir()
+        self.downloader = ModelDownloader(models_dir=active / "models")
 
         self._setup_ui()
+        # Defer model scanning so the window appears immediately
+        self.after(1, self._populate_models)
+
+    def set_comfyui_dir(self, path: Path):
+        """Switch to a different ComfyUI directory and refresh."""
+        self.downloader = ModelDownloader(models_dir=path / "models")
         self._populate_models()
 
     def _setup_ui(self):
@@ -293,13 +300,13 @@ class ModelsTab(ttk.Frame):
                     total_size += info.get("size_gb", 0)
 
         if already_installed:
-            self.main_window.log(f"{len(already_installed)} model(s) already installed, skipping:")
+            self.main_window.log(f"{len(already_installed)} model(s) already installed, skipping:", tag="models")
             for name in already_installed:
-                self.main_window.log(f"  - {name}")
+                self.main_window.log(f"  - {name}", tag="models")
 
         if not models_to_download:
             self.main_window.set_status("All selected models are already installed.")
-            self.main_window.log("All selected models are already installed.")
+            self.main_window.log("All selected models are already installed.", tag="models")
             return
 
         if not messagebox.askyesno(
@@ -344,9 +351,9 @@ class ModelsTab(ttk.Frame):
         total_gb = sum(m.get("size_gb", 0) for m in models)
 
         self.main_window.set_status(f"Downloading {total} model(s)...")
-        self.main_window.log(f"Starting download of {total} model(s) (~{total_gb:.1f} GB):")
+        self.main_window.log(f"Starting download of {total} model(s) (~{total_gb:.1f} GB):", tag="models")
         for name in names:
-            self.main_window.log(f"  - {name}")
+            self.main_window.log(f"  - {name}", tag="models")
 
         # Track the last message to avoid flooding the log with duplicate percent updates
         last_logged = {"msg": ""}
@@ -358,7 +365,7 @@ class ModelsTab(ttk.Frame):
                 base = message.split("...")[0] + "..." if "..." in message else message
                 if base != last_logged["msg"]:
                     last_logged["msg"] = base
-                    self.after(0, lambda m=message: self.main_window.log(m))
+                    self.after(0, lambda m=message: self.main_window.log(m, tag="models"))
 
         def do_download():
             return self.downloader.download_multiple(models, progress_callback)
@@ -370,14 +377,14 @@ class ModelsTab(ttk.Frame):
             if fail_count == 0:
                 msg = f"Downloaded {success_count} model(s) successfully."
                 self.main_window.set_status(msg)
-                self.main_window.log(msg)
+                self.main_window.log(msg, tag="models")
             else:
                 msg = f"Downloads finished: {success_count} succeeded, {fail_count} failed."
                 self.main_window.set_status(msg)
-                self.main_window.log(msg)
+                self.main_window.log(msg, tag="models")
                 for name, ok in results.items():
                     if not ok:
-                        self.main_window.log(f"  FAILED: {name}")
+                        self.main_window.log(f"  FAILED: {name}", tag="models")
 
             self.progress.update_progress(100, 100, "Done")
             self._refresh_models()

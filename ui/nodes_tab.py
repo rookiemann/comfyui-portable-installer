@@ -7,6 +7,7 @@ from pathlib import Path
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from config import get_active_comfyui_dir
 
 from core.custom_node_manager import CustomNodeManager
 from data.custom_nodes_registry import (
@@ -35,9 +36,16 @@ class NodesTab(ttk.Frame):
     def __init__(self, parent, main_window):
         super().__init__(parent, padding=10)
         self.main_window = main_window
-        self.node_manager = CustomNodeManager()
+        active = get_active_comfyui_dir()
+        self.node_manager = CustomNodeManager(comfyui_dir=active)
 
         self._setup_ui()
+        # Defer node scanning so the window appears immediately
+        self.after(1, self._populate_nodes)
+
+    def set_comfyui_dir(self, path: Path):
+        """Switch to a different ComfyUI directory and refresh."""
+        self.node_manager = CustomNodeManager(comfyui_dir=path)
         self._populate_nodes()
 
     def _setup_ui(self):
@@ -151,48 +159,54 @@ class NodesTab(ttk.Frame):
         )
 
     def _populate_nodes(self):
-        """Populate nodes tree from registry."""
+        """Populate nodes tree from registry (heavy work in background)."""
         self.nodes_tree.clear()
         self.installed_tree.clear()
 
         category_filter = self.category_combo.get()
 
-        # Populate registry nodes
-        for node_id, info in CUSTOM_NODES.items():
-            # Filter by category
-            if category_filter != "all" and info.get("category") != category_filter:
-                continue
+        def do_gather():
+            # Background thread: gather data (git subprocesses for installed nodes)
+            registry_data = []
+            for node_id, info in CUSTOM_NODES.items():
+                if category_filter != "all" and info.get("category") != category_filter:
+                    continue
+                status = self.node_manager.get_node_status(info)
+                desc = info.get("description", "")
+                if len(desc) > 50:
+                    desc = desc[:47] + "..."
+                registry_data.append((node_id, info, status, desc))
+            installed = self.node_manager.list_installed_nodes()
+            return registry_data, installed
 
-            # Check status
-            status = self.node_manager.get_node_status(info)
+        def on_complete(result):
+            if not self.winfo_exists():
+                return
+            registry_data, installed = result
+            self.nodes_tree.clear()
+            self.installed_tree.clear()
+            for node_id, info, status, desc in registry_data:
+                self.nodes_tree.insert_item(
+                    values=(
+                        info.get("name", node_id),
+                        info.get("category", ""),
+                        desc,
+                        status
+                    ),
+                    item_id=node_id,
+                    checked=info.get("required", False)
+                )
+            for node in installed:
+                self.installed_tree.insert_item(
+                    values=(
+                        node.get("name", ""),
+                        node.get("path", ""),
+                        "Yes" if node.get("has_requirements") else "No"
+                    ),
+                    item_id=node.get("name", "")
+                )
 
-            # Truncate description
-            desc = info.get("description", "")
-            if len(desc) > 50:
-                desc = desc[:47] + "..."
-
-            self.nodes_tree.insert_item(
-                values=(
-                    info.get("name", node_id),
-                    info.get("category", ""),
-                    desc,
-                    status
-                ),
-                item_id=node_id,
-                checked=info.get("required", False)
-            )
-
-        # Populate installed nodes
-        installed = self.node_manager.list_installed_nodes()
-        for node in installed:
-            self.installed_tree.insert_item(
-                values=(
-                    node.get("name", ""),
-                    node.get("path", ""),
-                    "Yes" if node.get("has_requirements") else "No"
-                ),
-                item_id=node.get("name", "")
-            )
+        self.main_window.run_async(do_gather, on_complete)
 
     def _on_category_change(self, event=None):
         """Handle category filter change."""
@@ -265,6 +279,7 @@ class NodesTab(ttk.Frame):
         """Start installing nodes."""
         total = len(nodes)
         self.main_window.set_status(f"Installing {total} custom nodes...")
+        self.main_window.log(f"Installing {total} custom node(s)...", tag="nodes")
 
         def progress_callback(current, total, message):
             if self.winfo_exists():
@@ -279,8 +294,10 @@ class NodesTab(ttk.Frame):
 
             if fail_count == 0:
                 self.main_window.set_status(f"Installed {success_count} nodes successfully")
+                self.main_window.log(f"Installed {success_count} node(s) successfully.", tag="nodes")
             else:
                 self.main_window.set_status(f"Installed {success_count}, failed {fail_count}")
+                self.main_window.log(f"Nodes: {success_count} installed, {fail_count} failed.", tag="nodes")
 
             self._refresh_nodes()
 
@@ -295,6 +312,7 @@ class NodesTab(ttk.Frame):
             return
 
         self.main_window.set_status(f"Updating {len(selected)} nodes...")
+        self.main_window.log(f"Updating {len(selected)} selected node(s)...", tag="nodes")
 
         def progress_callback(current, total, message):
             if self.winfo_exists():
@@ -313,6 +331,7 @@ class NodesTab(ttk.Frame):
         def on_complete(results):
             success_count = sum(1 for v in results.values() if v)
             self.main_window.set_status(f"Updated {success_count} nodes")
+            self.main_window.log(f"Updated {success_count} node(s).", tag="nodes")
             self._refresh_nodes()
 
         self.main_window.run_async(do_update, on_complete)
@@ -333,6 +352,7 @@ class NodesTab(ttk.Frame):
             return
 
         self.main_window.set_status("Updating all nodes...")
+        self.main_window.log(f"Updating all {len(installed)} installed node(s)...", tag="nodes")
 
         def progress_callback(current, total, message):
             if self.winfo_exists():
@@ -344,6 +364,7 @@ class NodesTab(ttk.Frame):
         def on_complete(results):
             success_count = sum(1 for v in results.values() if v)
             self.main_window.set_status(f"Updated {success_count} nodes")
+            self.main_window.log(f"Updated {success_count} node(s).", tag="nodes")
             self._refresh_nodes()
 
         self.main_window.run_async(do_update, on_complete)
@@ -365,6 +386,7 @@ class NodesTab(ttk.Frame):
             return
 
         self.main_window.set_status(f"Removing {len(selected)} nodes...")
+        self.main_window.log(f"Removing {len(selected)} node(s)...", tag="nodes")
 
         def do_remove():
             results = {}
@@ -375,6 +397,7 @@ class NodesTab(ttk.Frame):
         def on_complete(results):
             success_count = sum(1 for v in results.values() if v)
             self.main_window.set_status(f"Removed {success_count} nodes")
+            self.main_window.log(f"Removed {success_count} node(s).", tag="nodes")
             self._refresh_nodes()
 
         self.main_window.run_async(do_remove, on_complete)

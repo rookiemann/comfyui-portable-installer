@@ -1,6 +1,7 @@
 """
 ComfyUI Module Configuration
 """
+import json
 import shutil
 from pathlib import Path
 
@@ -157,3 +158,63 @@ EXTRA_FLAGS = {
 WINDOW_TITLE = "ComfyUI Module - Installer & Manager"
 WINDOW_SIZE = "1150x850"
 APP_VERSION = "1.0.0"
+
+
+# --- User settings persistence ---
+
+SETTINGS_FILE = BASE_DIR / "settings.json"
+MODULE_MODEL_PATHS_YAML = BASE_DIR / "module_model_paths.yaml"
+
+
+def load_settings() -> dict:
+    """Load user settings from settings.json. Returns {} on missing/corrupt."""
+    try:
+        if SETTINGS_FILE.exists():
+            return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        pass
+    return {}
+
+
+def save_settings(data: dict):
+    """Merge *data* into the existing settings file and write it back."""
+    settings = load_settings()
+    settings.update(data)
+    SETTINGS_FILE.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+
+
+def get_active_comfyui_dir() -> Path:
+    """Return the active ComfyUI directory.
+
+    Uses the external path from settings if set and valid,
+    otherwise falls back to the built-in COMFYUI_DIR.
+    """
+    settings = load_settings()
+    ext = settings.get("comfyui_dir")
+    if ext:
+        p = Path(ext)
+        if p.is_dir() and (p / "main.py").exists():
+            return p
+    return COMFYUI_DIR
+
+
+def get_active_models_dir() -> Path:
+    """Return the models directory for the active ComfyUI."""
+    return get_active_comfyui_dir() / "models"
+
+
+def get_saved_comfyui_dirs() -> list[str]:
+    """Return all saved ComfyUI directories.
+
+    The built-in COMFYUI_DIR is always included.
+    """
+    dirs = [str(COMFYUI_DIR)]
+    for d in load_settings().get("saved_comfyui_dirs", []):
+        if d not in dirs:
+            dirs.append(d)
+    return dirs
+
+
+def get_extra_model_dirs() -> list[str]:
+    """Return user-added extra model search directories."""
+    return load_settings().get("extra_model_dirs", [])
