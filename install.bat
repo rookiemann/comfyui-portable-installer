@@ -43,9 +43,9 @@ if exist "%PYTHON_EXE%" (
 
 echo [1/8] Downloading Python %PYTHON_VERSION% embedded...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
-     $ProgressPreference = 'SilentlyContinue'; ^
-     Invoke-WebRequest -Uri '%PYTHON_URL%' -OutFile '%PYTHON_ZIP%'"
+    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;" ^
+    "$ProgressPreference = 'SilentlyContinue';" ^
+    "Invoke-WebRequest -Uri '%PYTHON_URL%' -OutFile '%PYTHON_ZIP%'"
 
 if not exist "%PYTHON_ZIP%" (
     echo.
@@ -81,17 +81,17 @@ if not exist "%PYTHON_DIR%\Lib\site-packages" (
 
 :: Rewrite the ._pth file to enable import site and site-packages
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$pthFiles = Get-ChildItem '%PYTHON_DIR%\python*._pth'; ^
-     if ($pthFiles.Count -gt 0) { ^
-         $pth = $pthFiles[0]; ^
-         $zipName = (Get-ChildItem '%PYTHON_DIR%\python*.zip' | Select-Object -First 1).Name; ^
-         if (-not $zipName) { $zipName = 'python312.zip' }; ^
-         $content = @($zipName, '.', 'Lib', 'Lib\site-packages', 'DLLs', '..\comfyui', '', 'import site'); ^
-         $content | Set-Content -Path $pth.FullName -Encoding ASCII; ^
-         Write-Host '   Configured:' $pth.Name ^
-     } else { ^
-         Write-Host 'WARNING: No ._pth file found' ^
-     }"
+    "$pthFiles = Get-ChildItem '%PYTHON_DIR%\python*._pth';" ^
+    "if ($pthFiles.Count -gt 0) {" ^
+    "  $pth = $pthFiles[0];" ^
+    "  $zipName = (Get-ChildItem '%PYTHON_DIR%\python*.zip' | Select-Object -First 1).Name;" ^
+    "  if (-not $zipName) { $zipName = 'python312.zip' };" ^
+    "  $content = @($zipName, '.', 'Lib', 'Lib\site-packages', 'DLLs', '..\comfyui', '', 'import site');" ^
+    "  $content | Set-Content -Path $pth.FullName -Encoding ASCII;" ^
+    "  Write-Host '   Configured:' $pth.Name" ^
+    "} else {" ^
+    "  Write-Host 'WARNING: No ._pth file found'" ^
+    "}"
 
 :: ============================================
 :: Step 3: Bootstrap pip (via get-pip.py)
@@ -101,9 +101,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 if %errorlevel% neq 0 (
     echo [3/8] Downloading get-pip.py...
     powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-        "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
-         $ProgressPreference = 'SilentlyContinue'; ^
-         Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile '%PYTHON_DIR%\get-pip.py'"
+        "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;" ^
+        "$ProgressPreference = 'SilentlyContinue';" ^
+        "Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile '%PYTHON_DIR%\get-pip.py'"
 
     if not exist "%PYTHON_DIR%\get-pip.py" (
         echo ERROR: Failed to download get-pip.py.
@@ -150,9 +150,9 @@ if exist "%GIT_EXE%" (
 
 echo [5/8] Downloading portable Git %GIT_VERSION%...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
-     $ProgressPreference = 'SilentlyContinue'; ^
-     Invoke-WebRequest -Uri '%GIT_URL%' -OutFile '%GIT_ZIP%'"
+    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;" ^
+    "$ProgressPreference = 'SilentlyContinue';" ^
+    "Invoke-WebRequest -Uri '%GIT_URL%' -OutFile '%GIT_ZIP%'"
 
 if not exist "%GIT_ZIP%" (
     echo WARNING: Failed to download Git. Some features may not work.
@@ -180,9 +180,9 @@ if exist "%FFMPEG_EXE%" (
 
 echo [6/8] Downloading portable FFmpeg...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
-     $ProgressPreference = 'SilentlyContinue'; ^
-     Invoke-WebRequest -Uri '%FFMPEG_URL%' -OutFile '%FFMPEG_ZIP%'"
+    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;" ^
+    "$ProgressPreference = 'SilentlyContinue';" ^
+    "Invoke-WebRequest -Uri '%FFMPEG_URL%' -OutFile '%FFMPEG_ZIP%'"
 
 if not exist "%FFMPEG_ZIP%" (
     echo WARNING: Failed to download FFmpeg. Video features may not work.
@@ -197,17 +197,17 @@ echo [6/8] Extracting portable FFmpeg...
 :: FFmpeg zip has a versioned top-level dir (e.g. ffmpeg-7.1-essentials_build/).
 :: Extract to temp, then move bin/ to ffmpeg_portable/bin/.
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$tempDir = '%SCRIPT_DIR%_ffmpeg_temp'; ^
-     Expand-Archive -Path '%FFMPEG_ZIP%' -DestinationPath $tempDir -Force; ^
-     $inner = Get-ChildItem $tempDir -Directory | Select-Object -First 1; ^
-     if ($inner -and (Test-Path \"$($inner.FullName)\bin\")) { ^
-         New-Item -Path '%FFMPEG_DIR%\bin' -ItemType Directory -Force | Out-Null; ^
-         Copy-Item \"$($inner.FullName)\bin\*\" '%FFMPEG_DIR%\bin\' -Force; ^
-         Write-Host '   Extracted FFmpeg to ffmpeg_portable\bin\' ^
-     } else { ^
-         Write-Host 'WARNING: FFmpeg zip has unexpected structure' ^
-     }; ^
-     Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue"
+    "$tempDir = '%SCRIPT_DIR%_ffmpeg_temp';" ^
+    "Expand-Archive -Path '%FFMPEG_ZIP%' -DestinationPath $tempDir -Force;" ^
+    "$inner = Get-ChildItem $tempDir -Directory | Select-Object -First 1;" ^
+    "if ($inner -and (Test-Path (Join-Path $inner.FullName 'bin'))) {" ^
+    "  New-Item -Path '%FFMPEG_DIR%\bin' -ItemType Directory -Force | Out-Null;" ^
+    "  Copy-Item (Join-Path $inner.FullName 'bin\*') '%FFMPEG_DIR%\bin\' -Force;" ^
+    "  Write-Host '   Extracted FFmpeg to ffmpeg_portable\bin\'" ^
+    "} else {" ^
+    "  Write-Host 'WARNING: FFmpeg zip has unexpected structure'" ^
+    "};" ^
+    "Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue"
 
 del "%FFMPEG_ZIP%" 2>nul
 
