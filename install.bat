@@ -131,7 +131,7 @@ if %errorlevel% neq 0 (
 "%PYTHON_EXE%" -c "import _tkinter" >nul 2>&1
 if %errorlevel% neq 0 (
     echo [4/8] Setting up tkinter for GUI...
-    "%PYTHON_EXE%" -c "import sys; sys.path.insert(0, r'%SCRIPT_DIR%'); from core.python_manager import PythonManager; pm = PythonManager(); pm.setup_tkinter()"
+    "%PYTHON_EXE%" -c "import sys; sys.path.insert(0, r'%SCRIPT_DIR%.'); from core.python_manager import PythonManager; pm = PythonManager(); pm.setup_tkinter()"
     if errorlevel 1 (
         echo WARNING: Failed to set up tkinter. GUI may not work.
         echo   The CLI interface will still work: launcher.bat run
